@@ -16,7 +16,7 @@ impl<'a> Helper<'a> {
   }
   pub async fn update_fingerprint(&self) {
     let fingerprint_path = self.config.config_dir.join("web_fingerprint_v4.json");
-    let urls = vec!["https://0x727.github.io/FingerprintHub/web_fingerprint_v4.json"];
+    let urls = vec!["https://cns.onedom.com/admin-api/asm/vul-finger-template/export-web-fingerprint-json"];
     for url in urls {
       if let Err(err) = self
         .download_file_from_github(
@@ -129,7 +129,7 @@ impl<'a> Helper<'a> {
     let plugins_zip_path = self.config.config_dir.join("plugins.zip");
     if let Err(err) = self
       .download_file_from_github(
-        "https://github.com/0x727/FingerprintHub/releases/download/defaultv4/plugins.zip",
+        "https://cns.onedom.com/admin-api/asm/vul/poc-template/plugins-export",
         plugins_zip_path.to_str().unwrap_or("plugins.zip"),
       )
       .await
