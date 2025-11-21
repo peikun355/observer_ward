@@ -195,6 +195,16 @@ pub struct ObserverWardConfig {
   #[argh(switch, short = 'u')]
   #[serde(default)]
   pub update_fingerprint: bool,
+
+
+  /// update service fingerprint
+  ///
+  /// 默认只更新 Web 指纹文件(`web_fingerprint_v4.json`)，开启此开关将同时
+  /// 下载并覆盖服务指纹文件(`service_fingerprint_v4.json`)。
+  #[argh(switch)]
+  #[serde(default)]
+  pub update_service_fingerprint: bool,
+
   /// update plugin
   #[argh(switch)]
   #[serde(default)]

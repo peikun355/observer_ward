@@ -83,25 +83,38 @@ async fn set_config_api(
   auth: BearerAuth,
   config: web::Json<ObserverWardConfig>,
   cl: web::Data<RwLock<ClusterType>>,
+  cli_config: web::Data<ObserverWardConfig>,
 ) -> impl Responder {
   if !validator(token, auth) {
     return HttpResponse::Unauthorized().finish();
   }
-  let helper = Helper::new(&config);
-  if config.update_fingerprint {
-    helper.update_fingerprint().await;
+  // 创建一个可修改的副本，并继承服务端的配置目录等字段
+  let mut cfg = config.clone();
+  // 如果用户提交了 plugin 路径为 "default"，沿用服务器端配置
+  if cfg.plugin.is_some() {
+      cfg.plugin = cli_config.plugin.clone();
   }
-  if config.update_plugin {
-    helper.update_plugins().await;
+  cfg.config_dir = cli_config.config_dir.clone();
+  cfg.mode = cli_config.mode.clone();
+  cfg.proxy = cli_config.proxy.clone();
+  cfg.nuclei_args = cli_config.nuclei_args.clone();
+  let helper = Helper::new(&cfg);
+  if cfg.update_fingerprint {
+      helper.update_fingerprint().await;
   }
-  if let Ok(mut cl) = cl.write() {
-    let templates = config.templates();
-    info!("{}probes loaded: {}", Emoji("📇", ""), templates.len());
-    let new_cl = cluster_templates(&templates);
-    info!("{}optimized probes: {}", Emoji("🚀", ""), new_cl.count());
-    *cl = new_cl;
+  if cfg.update_service_fingerprint {
+      helper.update_service_fingerprint().await;
   }
-  HttpResponse::Ok().json(config)
+  if cfg.update_plugin {
+      helper.update_plugins().await;
+  }
+  // 重新加载模板，更新聚类
+  if let Ok(mut cl_guard) = cl.write() {
+      let templates = cfg.templates();
+      let new_cl = cluster_templates(&templates);
+      *cl_guard = new_cl;
+  }
+  HttpResponse::Ok().json(cfg)
 }
 
 #[get("/v1/config")]

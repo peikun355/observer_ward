@@ -54,6 +54,38 @@ impl<'a> Helper<'a> {
       }
     }
   }
+
+
+  /// Download and update service fingerprints
+  pub async fn update_service_fingerprint(&self) {
+        let service_path = self.config.config_dir.join("service_fingerprint_v4.json");
+        // 指向 FingerprintHub 发布的服务指纹文件
+        let urls = vec!["https://cns.onedom.com/admin-api/asm/vul-finger-template/export-service-fingerprint-json"];
+        for url in urls {
+            if let Err(err) = self
+                .download_file_from_github(url, service_path.to_str().unwrap_or("service_fingerprint_v4.json"))
+                .await
+            {
+                error!("{}update service fingerprint err: {}", Emoji("", ""), err);
+                continue;
+            } else {
+                break;
+            }
+        }
+        // 与 update_fingerprint 类似的校验逻辑，可选
+        if let Ok(f) = File::open(&service_path) {
+            match serde_json::from_reader::<File, Vec<Template>>(f) {
+                Ok(ts) => {
+                    info!("{}successfully updated {} service fingerprint", Emoji("", ""), ts.len());
+                }
+                Err(err) => {
+                    error!("{}update service fingerprint err: {}", Emoji("", ""), err);
+                    std::fs::remove_file(&service_path).unwrap_or_default();
+                }
+            }
+        }
+    }
+
   async fn download_file_from_github(
     &self,
     download_url: &str,
@@ -168,6 +200,11 @@ impl<'a> Helper<'a> {
   }
 
   pub async fn run(&self) {
+    // 新增：优先检查是否需要更新服务指纹
+    if self.config.update_service_fingerprint {
+        self.update_service_fingerprint().await;
+        std::process::exit(0);
+    }
     if self.config.update_fingerprint {
       self.update_fingerprint().await;
       std::process::exit(0);
