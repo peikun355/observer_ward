@@ -19,7 +19,7 @@ use error::Result;
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedSender;
 use futures::stream::FuturesUnordered;
-use fxhash::FxHasher;
+use rustc_hash::FxHasher;
 use log::{debug, info};
 use moka::future::Cache;
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,7 @@ pub mod helper;
 pub mod input;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod mitm;
 mod nuclei;
 pub mod output;
 
@@ -163,7 +164,7 @@ impl MatchedResult {
     &self.nuclei
   }
 
-  fn update_matched(&mut self, result: &FingerprintResult) {
+  pub fn update_matched(&mut self, result: &FingerprintResult) {
     let response = result.response().unwrap_or_default();
     let text = response.text().unwrap_or_default();
     let title = extract_title(&text);
@@ -318,6 +319,7 @@ impl ClusterExecuteRunner {
     config: &ObserverWardConfig,
     cluster: &ClusterExecute,
     http_record: &mut HttpRecord,
+    extra_clusters: Option<&[Arc<ClusterExecute>]>,
   ) -> Result<()> {
     // 可能会有多个http，一般只有一个，多个会有flow控制
     for http in cluster.requests.http.iter() {
@@ -352,6 +354,16 @@ impl ClusterExecuteRunner {
           .operators
           .iter()
           .for_each(|operator| operator.matcher(&mut result));
+        // Also run operators from extra clusters (eg. web_default) if provided, so homepage
+        // rules are also attempted against this subpath response.
+        if let Some(extras) = extra_clusters {
+          for extra in extras.iter() {
+            extra
+              .operators
+              .iter()
+              .for_each(|operator| operator.matcher(&mut result));
+          }
+        }
         if !result.matcher_result().is_empty() {
           flag = true;
           self.update_result(result, Some(request.uri().to_string()));
@@ -516,7 +528,7 @@ impl ObserverWard {
     // TODO： 可以考虑加个多线程
     let mut http_record = HttpRecord::new(self.config.http_client_builder());
     for (index, clusters) in self.cluster_type.web_default.iter().enumerate() {
-      if let Err(err) = runner.http(&self.config, clusters, &mut http_record).await {
+      if let Err(err) = runner.http(&self.config, clusters, &mut http_record, None).await {
         debug!("{}:{}", Emoji("💢", ""), err);
         // 首页访问失败
         if index == 0 {
@@ -525,7 +537,7 @@ impl ObserverWard {
       }
     }
     for (index, clusters) in self.cluster_type.web_other.iter().enumerate() {
-      if let Err(err) = runner.http(&self.config, clusters, &mut http_record).await {
+      if let Err(err) = runner.http(&self.config, clusters, &mut http_record, Some(&self.cluster_type.web_default[..])).await {
         debug!("{}:{}", Emoji("💢", ""), err);
         // 第一次访问失败
         if index == 0 {
